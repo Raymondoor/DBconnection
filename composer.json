@@ -1,0 +1,8 @@
+{
+    "name": "raymondoor/dbconnection",
+    "description": "Simple custom class to handle database operations using PDO",
+    "license": "proprietary",
+    "require": {
+        "php": ">=7.4"
+    }
+}
