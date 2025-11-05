@@ -1,90 +1,95 @@
-<?php
-namespace raymondoor{
+<?php namespace Raymondoor;
 
 class DBconnection{
-    private static $dsn = 'sqlite:database.db'; // Edit here accordingly e.g. 'mysql:host=localhost;dbname=test' 'sqlite:/dir/database.db'
+    private static $pdo = null;
+    private static $lastSql = null;
+    private static $dsn = 'sqlite:./database.db'; // Edit here accordingly e.g. 'mysql:host=localhost;dbname=test' 'sqlite:/dir/database.db'
     private static $user = ''; // Username for DB
     private static $pass = ''; // Password for DB
-    private static $errpath = __DIR__.'/error.log'; // Error Log Path
 
-    private static $pdo = null;
-    public static function connect(){
+    const TYPE_SQLITE = 'sqlite';
+    const TYPE_MYSQL  = 'mysql';
+    const TYPE_PGSQL  = 'pgsql';
+    const TYPE_UNKNOWN = 'unknown';
+
+    public static function init(string $dsn = '', string $user = '', $pass = ''){
         if(self::$pdo === null){
             try{
+                if(!empty($dsn)){
+                    self::$dsn = $dsn;
+                }
+                if(!empty($user)){
+                    self::$user = $user;
+                }
+                if(!empty($pass)){
+                    self::$pass = $pass;
+                }
                 self::$pdo = new \PDO(self::$dsn,self::$user,self::$pass);
-                self::$pdo->setAttribute(\PDO::ATTR_ERRMODE, \PDO::ERRMODE_EXCEPTION);
-                self::$pdo->setAttribute(\PDO::ATTR_DEFAULT_FETCH_MODE, \PDO::FETCH_ASSOC);
+                self::setAttribute(\PDO::ATTR_ERRMODE, \PDO::ERRMODE_EXCEPTION);
+                self::setAttribute(\PDO::ATTR_DEFAULT_FETCH_MODE, \PDO::FETCH_ASSOC);
             }catch(\PDOException $e){
-                $errmessage = 'DBconnection Failed: '.$e->getmessage();
-                error_log($errmessage.PHP_EOL, 3, self::$errpath);
-                throw new \Exception($errmessage);
+                throw new \Exception('DBconnection Failed: '.$e->getMessage());
             }
-            return self::$pdo;
         }
-        return self::$pdo;
+        else{
+            trigger_error("DBconnection is already initialized", E_USER_NOTICE);
+        }
     }
-}
-class DBstatement{
-    private $statement;
-    private $pdo;
-    public function __construct(string $statement){
-        $this->statement = trim($statement);
+    public static function reset(){
+        self::$pdo = null;
+    }
+    
+    private static function setAttribute(int $attribute, $value){
+        if(self::$pdo !== null){
+            return self::$pdo->setAttribute($attribute, $value);
+        }
+    }
+    // use this for CREATE DROP statements
+    protected static function exec($sql):int{ // int>=0 or Exception
+        if(empty($sql)){
+            throw new \TypeError('Empty SQL Provided');
+        }
+        if(!is_string($sql)){
+            throw new \TypeError('SQL must be provided in String.');
+        }
+        return self::$pdo->exec($sql);
+    }
+    public static function run(string $sql, array $params = []){
+        if(empty($sql)){
+            throw new \TypeError('Empty SQL Provided');
+        }
+        if(!is_string($sql)){
+            throw new \TypeError('SQL must be provided in String.');
+        }
         try{
-            $this->pdo = DBconnection::connect();
-        }catch(\Exception $e){
-            throw new \Exception('Initialize Failed: '.$e->getMessage());
-        }
-    }
-    public function execute(array $parameters = []){
-        try{
-            $this->pdo->beginTransaction();
-            $stmt = $this->pdo->prepare($this->statement);
-            if(!$stmt){ // Just in case
-                throw new \Exception('Prepare Statement Failed: '.$this->statement);
-            }
-            $executed = $stmt->execute($parameters);
-            if(!$executed){ // Just in case
-                $this->pdo->rollBack();
-                $errorInfo = $stmt->errorInfo();
-                throw new \Exception('Execution Failed: '.$errorInfo[2]);
-            }
-            $queryType = strtoupper(substr($this->statement, 0, 6));
-            $result = null;
-            switch($queryType){
-                case 'SELECT':
-                    $result = $stmt->fetchAll();
-                    break;
-                case 'INSERT':
-                case 'UPDATE':
-                case 'DELETE':
-                    $result = $stmt->rowCount();
-                    break;
-                default:
-                    $this->pdo->rollBack();
-                    throw new \Exception('Unsupported Query Type: '.$this->statement);
-            }
-            $this->pdo->commit();
-            return $result;
-        }catch(\Exception $e){
-            if($this->pdo->inTransaction()){ // Check if in transaction before rollback
-                $this->pdo->rollBack();
-            }
-            $errmessage = 'Query Failed :'.$e->getMessage().' - Statement: '.$this->statement;
-            throw new \Exception($errmessage);
-        }
-    }
-    public function lastInsertId(){
-        return $this->pdo->lastInsertId();
-    }
-}
+            $pdo = self::$pdo;
+            $stmt = $pdo->prepare($sql);
+            $pdo->beginTransaction();
+            $stmt->execute($params);
 
+            $result = strpos(trim($sql), 'SELECT') === 0 ? $stmt->fetchAll() : $stmt->rowCount();
+
+            $pdo->commit();
+            self::$lastSql = $sql;
+            return $result;
+        }catch (\Exception $e){
+            if($pdo->inTransaction()){
+                $pdo->rollBack();
+            }
+            throw new \Exception('Query failed: '.$e->getMessage().' SQL: '.$sql);
+        }
+    }
+
+    public static function lastInsertId():int{
+        return (int)self::$pdo->lastInsertId();
+    }
+    public static function lastQuery():string{
+        return self::$lastSql;
+    }
+    public static function getType(): string{
+        if(strpos(self::$dsn, 'sqlite:') === 0) return self::TYPE_SQLITE;
+        if(strpos(self::$dsn, 'mysql:') === 0)  return self::TYPE_MYSQL;
+        if(strpos(self::$dsn, 'pgsql:') === 0)  return self::TYPE_PGSQL;
+        return self::TYPE_UNKNOWN;
+    }
 }
-/* Example code
-try{
-    $statement = new raymondoor\DBstatement('SELECT * FROM user WHERE username = :username');
-    $execute = $statement->execute([':username' => 'admin']);
-    print_r($execute);
-}catch(Exception $e){
-    echo $e->getMessage();
-}
-*/

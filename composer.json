@@ -1,13 +1,20 @@
 {
     "name": "raymondoor/dbconnection",
+    "type": "library",
     "description": "Simple custom class to handle database operations using PDO",
-    "license": "proprietary",
+    "license":"GPL-3.0-or-later",
+    "authors":[
+        {
+            "name":"Raymondoor",
+            "email":"torhc17311@gmail.com"
+        }
+    ],
     "require": {
         "php": ">=7.4"
     },
     "autoload": {
         "psr-4": {
-            "raymondoor\\": "src/"
+            "raymondoor\\": ""
         }
     }
 }
