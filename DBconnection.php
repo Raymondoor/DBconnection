@@ -39,10 +39,11 @@ class DBconnection{
         self::$pdo = null;
     }
     
-    private static function setAttribute(int $attribute, $value){
+    private static function setAttribute(int $attribute, $value):bool{
         if(self::$pdo !== null){
             return self::$pdo->setAttribute($attribute, $value);
         }
+        return false;
     }
     // use this for CREATE DROP statements
     protected static function exec($sql):int{ // int>=0 or Exception
